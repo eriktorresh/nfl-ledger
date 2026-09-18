@@ -215,6 +215,22 @@ Alert delivery: **in-app / Chief** until Quo A2P is Approved; then Quo SMS (+ op
 
 ---
 
+
+---
+
+## Close lines & Monday report
+
+```bash
+# Tuesday after the week is final ONLY — refuses games without a final score
+python scripts/close_lines.py --refresh
+
+# Monday scorecard (pass season/week, or omit to derive from leg game_ids)
+python scripts/monday_report.py --season 2026 --week 2
+python scripts/monday_report.py --season 2026 --week 2 --write   # also reports/YYYY_WW.md
+```
+
+Shared odds math lives in `lib.py` (same formulas as GRADE). **`clv_no_vig` sign:** `fair_taken_at_close − offered_implied_at_take` — **positive = beat the close** (good take); negative = worse than the close. Fair close always uses de-vig of **both** close sides; never one-sided raw implied. `anytime_td` / `first_td` stay permanently unauditable (`closing_data_available=false`).
+
 ## Unchange
 
 Never place bets. DK+HR takes. BE research only. Loss Minimizer: clear hedge/cash-out only. Stakes are Erik’s.
