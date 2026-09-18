@@ -36,9 +36,14 @@ import lib  # noqa: E402
 
 TICKETS = ROOT / "data" / "tickets.csv"
 LEGS = ROOT / "data" / "legs.csv"
+SHADOW = ROOT / "data" / "shadow.csv"
+SHADOW_LEGS = ROOT / "data" / "shadow_legs.csv"
 REPORTS = ROOT / "reports"
 
 UNAEDITABLE = {"anytime_td", "first_td"}
+
+# Hard-coded paper stake for shadow (no-go) tickets — never another unit size.
+PAPER_STAKE_USD = 10
 
 
 def parse_game_id(game_id: str) -> Optional[tuple[int, int, str, str]]:
@@ -64,6 +69,14 @@ def _float(v: str) -> Optional[float]:
         return float(s)
     except ValueError:
         return None
+
+
+def paper_stake(row: dict[str, str]) -> float:
+    """Shadow paper stake — hard-coded default $10 when blank."""
+    v = _float(row.get("paper_stake_usd") or "")
+    if v is None:
+        return float(PAPER_STAKE_USD)
+    return v
 
 
 def _mean(vals: list[float]) -> Optional[float]:
@@ -198,6 +211,9 @@ def build_report(
     legs: list[dict[str, str]],
     season: int,
     week: int,
+    *,
+    shadow: Optional[list[dict[str, str]]] = None,
+    shadow_legs: Optional[list[dict[str, str]]] = None,
 ) -> str:
     week_legs = [L for L in legs if leg_in_week(L, season, week)]
     week_ticket_ids = {L.get("ticket_id") for L in week_legs}
@@ -371,6 +387,134 @@ def build_report(
     )
     lines.append("")
 
+    # Taken vs shadow (no-go book)
+    lines.append("## Taken vs shadow")
+    lines.append("")
+    lines.append(
+        "Compare **taken** portfolio vs **graded but not taken** (shadow) tickets. "
+        f"Shadow paper stake is hard-coded at **${PAPER_STAKE_USD:.0f}** per ticket."
+    )
+    lines.append("")
+    lines.append(
+        "_No backfill of old PASSes; shadow starts empty until Edge logs "
+        "decisions at decision time._"
+    )
+    lines.append("")
+
+    shadow = shadow or []
+    shadow_legs = shadow_legs or []
+
+    # Taken summary (week-scoped tickets)
+    taken_count = len(week_tickets)
+    taken_stake = 0.0
+    taken_settled_returned = 0.0
+    taken_open_stake = 0.0
+    for T in week_tickets:
+        s = _float(T.get("stake_usd") or "") or 0.0
+        taken_stake += s
+        status = (T.get("status") or "").strip()
+        settled = (T.get("settled") or "").strip().lower()
+        if status == "open":
+            taken_open_stake += s
+        if settled == "true" or status == "settled":
+            ret = _float(T.get("returned_usd") or "")
+            if ret is not None:
+                taken_settled_returned += ret
+
+    lines.append("### Taken")
+    lines.append("")
+    lines.append(f"- Ticket count: **{taken_count}**")
+    lines.append(f"- Stake: **${taken_stake:.2f}**")
+    lines.append(f"- Settled returned: **${taken_settled_returned:.2f}**")
+    lines.append(f"- Open stake: **${taken_open_stake:.2f}**")
+    lines.append("")
+
+    # Shadow week scope via shadow_legs game_id
+    week_shadow_legs = [L for L in shadow_legs if leg_in_week(L, season, week)]
+    week_shadow_ids = {L.get("shadow_id") for L in week_shadow_legs if L.get("shadow_id")}
+    # Also include shadow rows whose decided_at week we cannot infer from legs —
+    # prefer legs filter; if no shadow_legs in week, still show empty counts.
+    week_shadow = [S for S in shadow if S.get("shadow_id") in week_shadow_ids]
+    # If shadow has rows but no legs yet, do not invent week membership.
+    if not week_shadow_ids and not week_shadow_legs:
+        week_shadow = []
+
+    by_grade_shadow: dict[str, int] = defaultdict(int)
+    shadow_paper_stake = 0.0
+    shadow_settled_pnl = 0.0
+    shadow_settled_n = 0
+    play_skipped = 0
+    pass_logged = 0
+    for S in week_shadow:
+        g = (S.get("edge_grade") or "OTHER").strip() or "OTHER"
+        by_grade_shadow[g] += 1
+        pstake = paper_stake(S)
+        shadow_paper_stake += pstake
+        reason = (S.get("reason_not_taken") or "").strip()
+        if reason == "skip_play":
+            play_skipped += 1
+        if reason == "pass_edge" or g == "PASS":
+            pass_logged += 1
+        status = (S.get("status") or "").strip()
+        settled = (S.get("settled") or "").strip().lower()
+        if settled == "true" or status == "settled":
+            shadow_settled_n += 1
+            ret = _float(S.get("returned_usd") or "")
+            if ret is not None:
+                shadow_settled_pnl += ret - pstake
+            else:
+                # No return logged yet — P&L unknown for this row
+                pass
+
+    lines.append("### Shadow (no-go)")
+    lines.append("")
+    lines.append(f"- Shadow tickets in week: **{len(week_shadow)}**")
+    if by_grade_shadow:
+        lines.append("- Count by `edge_grade`:")
+        for g in sorted(by_grade_shadow):
+            lines.append(f"  - {g}: **{by_grade_shadow[g]}**")
+    else:
+        lines.append("- Count by `edge_grade`: _(none)_")
+    lines.append(
+        f"- Paper stake (sum, ${PAPER_STAKE_USD:.0f}/ticket default): "
+        f"**${shadow_paper_stake:.2f}**"
+    )
+    if shadow_settled_n:
+        lines.append(
+            f"- Settled paper P&L (returned − paper stake): "
+            f"**${shadow_settled_pnl:.2f}** ({shadow_settled_n} settled)"
+        )
+    else:
+        lines.append("- Settled paper P&L: **N/A** (none settled)")
+    lines.append(f"- PLAY skipped (`reason_not_taken=skip_play`): **{play_skipped}**")
+    lines.append(
+        f"- PASS logged (`reason_not_taken=pass_edge` or `edge_grade=PASS`): "
+        f"**{pass_logged}**"
+    )
+    lines.append("")
+
+    # CLV: auditable taken legs vs auditable shadow legs
+    taken_clvs = [
+        c
+        for L in auditable
+        if (c := _float(L.get("clv_no_vig") or "")) is not None
+    ]
+    shadow_auditable = [L for L in week_shadow_legs if is_auditable(L)]
+    shadow_clvs = [
+        c
+        for L in shadow_auditable
+        if (c := _float(L.get("clv_no_vig") or "")) is not None
+    ]
+    lines.append("### CLV (auditable legs)")
+    lines.append("")
+    lines.append(
+        f"- Taken mean CLV: n={len(taken_clvs)} mean={_fmt(_mean(taken_clvs))}"
+    )
+    lines.append(
+        f"- Shadow mean CLV: n={len(shadow_clvs)} mean={_fmt(_mean(shadow_clvs))}"
+    )
+    lines.append("")
+
     # Process notes
     lines.append("## Process notes (hand-filled)")
     lines.append("")
@@ -391,20 +535,39 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
     p.add_argument("--tickets", default=str(TICKETS))
     p.add_argument("--legs", default=str(LEGS))
+    p.add_argument("--shadow", default=str(SHADOW))
+    p.add_argument("--shadow-legs", default=str(SHADOW_LEGS))
     args = p.parse_args(argv)
 
     tickets = load_csv(Path(args.tickets))
     legs = load_csv(Path(args.legs))
+    shadow_path = Path(args.shadow)
+    shadow_legs_path = Path(args.shadow_legs)
+    shadow = load_csv(shadow_path) if shadow_path.exists() else []
+    shadow_legs = (
+        load_csv(shadow_legs_path) if shadow_legs_path.exists() else []
+    )
 
     if args.season is None or args.week is None:
         if args.season is not None or args.week is not None:
             print("Pass both --season and --week, or neither.", file=sys.stderr)
             return 2
-        season, week = derive_season_week(legs)
+        # Prefer taken legs; fall back to shadow_legs if taken empty of game_ids
+        try:
+            season, week = derive_season_week(legs)
+        except SystemExit:
+            season, week = derive_season_week(shadow_legs)
     else:
         season, week = args.season, args.week
 
-    md = build_report(tickets, legs, season, week)
+    md = build_report(
+        tickets,
+        legs,
+        season,
+        week,
+        shadow=shadow,
+        shadow_legs=shadow_legs,
+    )
     sys.stdout.write(md)
 
     if args.write:
