@@ -141,9 +141,18 @@ Graded line format (malformed if incomplete):
 ### Recording a take
 1. Log **at or before** placement — never after the outcome.  
 2. Required: `placed_at` (minute + UTC offset), `book`, `lane`, `stake_usd`, per-leg `price_at_take` / `line_at_take` (taken side), `edge_grade_at_placement`.  
-3. Unknown → blank + `VERIFY` in notes — never guess, never wait.  
+3. Unknown → blank + dated `VERIFY(YYYY-MM-DD):` in notes — never guess, never wait.  
 4. `edge_grade_at_placement` = what Edge issued (incl `UNGRADED`) — never upgrade to match stake.  
 5. `stake_vs_grade=override` whenever money went against the grade. A ledger that is always `agree` is managed, not kept.
+
+### VERIFY notes
+- Format: `VERIFY(YYYY-MM-DD): …` (date required). Older than **7 days** (America/New_York) → validate error.  
+- **Never excused by VERIFY:** ticket `placed_at`; leg `game_id`; leg price (`price_at_take` or `american_price_at_take`). Blank = hard fail.  
+- Other required blanks may be excused by VERIFY only while parent ticket `status=open` **and** kickoff has not passed (min `kickoff_at` across that ticket’s legs; if all blank, open status alone still allows the excuse). After any kickoff has passed, or `status` is `settled`|`void`|`cashout`, VERIFY excuses nothing.  
+- `validate.py` always prints a **VERIFY-debt** count (rows still carrying a dated VERIFY note).
+
+### Reconstructions
+Chat/Slack backfills are marked `RECONSTRUCTED (…, not at-placement)` in notes. Reconstructions may be **corrected in place** until the first true at-placement take is logged for that ticket; after that, frozen-field rules apply.
 
 ### Frozen fields
 Never edit on an existing row: `placed_at`, `book`, `lane`, `stake_usd`, `edge_grade_at_placement`, `stake_vs_grade`, `price_at_take`, `line_at_take`, `game_id`.  
@@ -185,6 +194,7 @@ Enums: `market` spread|total|ml|anytime_td|first_td|team_total|other · `result`
 
 ```bash
 python validate.py
+python tests/test_validate.py             # or: python -m unittest discover -s tests
 python scripts/close_lines.py --refresh   # Tuesday after week final ONLY
 python scripts/monday_report.py           # Mondays
 ```
