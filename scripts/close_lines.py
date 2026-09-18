@@ -3,11 +3,12 @@
 
 Usage: python scripts/close_lines.py --refresh
 
-Pulls nflverse nfldata games.csv. Joins legs on game_id
+Pulls nflverse nfldata games.csv. Joins legs (and shadow_legs) on game_id
 (SEASON_WW_AWAY_HOME). Refuses to write any closing_* values for games
 without a final score (blank home_score/away_score). Never writes a live
 spread as close. anytime_td / first_td: closing_data_available=false forever;
-closing columns stay blank (never estimated).
+closing columns stay blank (never estimated). Also refreshes shadow_legs.csv
+with the same refuse-without-final and ATD rules.
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ if str(ROOT) not in sys.path:
 import lib  # noqa: E402
 
 LEGS = ROOT / "data" / "legs.csv"
+SHADOW_LEGS = ROOT / "data" / "shadow_legs.csv"
 NFLVERSE_GAMES_URL = (
     "https://raw.githubusercontent.com/nflverse/nfldata/master/data/games.csv"
 )
@@ -389,6 +391,37 @@ def write_legs(path: Path, legs: list[dict[str, str]], fieldnames: list[str]) ->
             w.writerow({k: row.get(k, "") for k in fieldnames})
 
 
+def refresh_one(
+    legs_path: Path,
+    games: list[dict[str, str]],
+    *,
+    dry_run: bool,
+    label: str,
+) -> tuple[int, int]:
+    """Refresh closing fields on one legs-like CSV. Returns (updated, skipped)."""
+    if not legs_path.exists():
+        print(f"{label}: skip — missing {legs_path}")
+        return 0, 0
+    with legs_path.open(newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        fieldnames = list(reader.fieldnames or [])
+        legs = list(reader)
+
+    new_legs, log, updated, skipped = apply_refresh(legs, games)
+    print(f"--- {label} ({legs_path.name}) ---")
+    for line in log:
+        print(line)
+    print(f"summary [{label}]: updated={updated} skipped={skipped} total={len(legs)}")
+
+    if dry_run:
+        print(f"dry-run [{label}]: no write")
+        return updated, skipped
+
+    write_legs(legs_path, new_legs, fieldnames)
+    print(f"wrote {legs_path}")
+    return updated, skipped
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
@@ -408,36 +441,28 @@ def main(argv: Optional[list[str]] = None) -> int:
         help="Path to legs.csv",
     )
     p.add_argument(
+        "--shadow-legs",
+        default=str(SHADOW_LEGS),
+        help="Path to shadow_legs.csv (same closing rules as legs)",
+    )
+    p.add_argument(
         "--dry-run",
         action="store_true",
-        help="Compute updates but do not write legs.csv",
+        help="Compute updates but do not write CSVs",
     )
     args = p.parse_args(argv)
 
-    legs_path = Path(args.legs)
-    with legs_path.open(newline="", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        fieldnames = list(reader.fieldnames or [])
-        legs = list(reader)
-
     if args.games_csv:
-        text = Path(args.games_csv).read_text(encoding="utf-8")
-        games = load_games_from_text(text)
+        games_text = Path(args.games_csv).read_text(encoding="utf-8")
+        games = load_games_from_text(games_text)
     else:
         print(f"Fetching {NFLVERSE_GAMES_URL} …")
         games = fetch_games_csv()
 
-    new_legs, log, updated, skipped = apply_refresh(legs, games)
-    for line in log:
-        print(line)
-    print(f"summary: updated={updated} skipped={skipped} total={len(legs)}")
-
-    if args.dry_run:
-        print("dry-run: no write")
-        return 0
-
-    write_legs(legs_path, new_legs, fieldnames)
-    print(f"wrote {legs_path}")
+    refresh_one(Path(args.legs), games, dry_run=args.dry_run, label="taken")
+    refresh_one(
+        Path(args.shadow_legs), games, dry_run=args.dry_run, label="shadow"
+    )
     return 0
 
 

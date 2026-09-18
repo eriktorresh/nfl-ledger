@@ -1,6 +1,6 @@
 # nfl-ledger
 
-Source of truth for Erik’s NFL betting process. **Anything not in `data/tickets.csv` and `data/legs.csv` did not happen.** Chat, Slack, cards, and summaries are not records.
+Source of truth for Erik’s NFL betting process. **Anything not in `data/tickets.csv` and `data/legs.csv` did not happen as a take.** Graded-but-not-taken decisions live in the **shadow book** (`data/shadow.csv` + `data/shadow_legs.csv`) — never invent historical PASS rows. Chat, Slack, cards, and summaries are not records.
 
 Research and alerts only. **Bots never place bets.** Stakes are Erik’s call. Takes only at **DraftKings (DK)** and **Hard Rock (HR)**. **BettorEdge (BE)** is research / comparison only.
 
@@ -26,7 +26,7 @@ Skills (Grok Bot): `nfl-screen-mode`, `sgp-edge-rules`, `nfl-ledger-protocol`.
 
 ```
 Slate → SCREEN (Scout) → GRADE (Edge) → Erik decides stake
-      → log take in this repo (PR) at/before placement
+      → log take OR shadow (no-go) in this repo (PR) at decision time
       → watch (Odds Watch / Loss Minimizer)
       → settle (PR) → Tuesday close_lines.py → Monday report
 ```
@@ -34,10 +34,11 @@ Slate → SCREEN (Scout) → GRADE (Edge) → Erik decides stake
 1. **SCREEN** — Scout runs `screen <day|slate>` over DK+HR (both sides of markets). Cap 8 S1–S4 candidates → “Hand to GRADE.” S5 is a separate lottery construction.
 2. **GRADE** — Edge grades only those candidates (INPUT GATE first).
 3. **Take** — Erik places at DK or HR. Chief/Manager open a **take** PR into `tickets.csv` + `legs.csv` **at or before** placement (never after the outcome).
-4. **Watch** — alerts in-app / Chief only until Quo SMS is Approved (no Slack until then).
-5. **Settle** — after the game, **settle** PR fills `settled`, `returned_usd`, `settled_at`, leg `result`.
-6. **Close** — Tuesday after the week is final: `python scripts/close_lines.py --refresh` only (never earlier).
-7. **Report** — Monday: `python scripts/monday_report.py`. Outcome ≠ proof of grade quality.
+4. **Shadow (no-go)** — When Edge issues **PASS**, or Erik skips a **PLAY** / **ENTERTAINMENT**, Chief/NFL Manager logs a **shadow** PR into `shadow.csv` + `shadow_legs.csv` **at decision time** with both-side prices — never after the outcome. Default `paper_stake_usd` = **$10** (hard-coded; no other unit size). Do **not** backfill old PASSes.
+5. **Watch** — alerts in-app / Chief only until Quo SMS is Approved (no Slack until then).
+6. **Settle** — after the game, **settle** PR fills `settled`, `returned_usd`, `settled_at`, leg `result` (taken and/or shadow).
+7. **Close** — Tuesday after the week is final: `python scripts/close_lines.py --refresh` only (never earlier). Refreshes `legs.csv` **and** `shadow_legs.csv`.
+8. **Report** — Monday: `python scripts/monday_report.py` (includes **Taken vs shadow**). Outcome ≠ proof of grade quality.
 
 ---
 
@@ -184,11 +185,34 @@ Enums: `book` DK|HR|OTHER · `lane` TNF|S5|ATD|SCREEN|SGP|OTHER · `market_famil
 
 Enums: `market` spread|total|ml|anytime_td|first_td|team_total|other · `result` pending|win|loss|push|void|(blank)
 
+### `data/shadow.csv` (no-go / paper book)
+Header-only until Edge logs a decision. **Never invent historical PASS tickets.**
+
+`shadow_id,decided_at,book,lane,market_family,edge_grade,paper_stake_usd,offered_american,offered_decimal,fair_conservative,gap_pp,reason_not_taken,status,settled,returned_usd,settled_at,notes,created_at,updated_at`
+
+Enums: `book` DK|HR|OTHER · `lane` TNF|S5|ATD|SCREEN|SGP|OTHER · `edge_grade` PLAY|PASS|ENTERTAINMENT|UNGRADED|LOTTERY|HOLD|OTHER · `reason_not_taken` pass_edge|skip_entertainment|skip_play|budget|user|other · `status` open|settled|void|expired
+
+**`paper_stake_usd` default = `10`** (hard-coded unit size for every new shadow row — do not use another size). `decided_at` is always required (decision log; VERIFY never excuses it).
+
+### `data/shadow_legs.csv`
+Mirrors `legs.csv` fields needed for close/CLV:
+
+`leg_id,shadow_id,game_id,kickoff_at,away_team,home_team,market,side,line_at_take,price_at_take,american_price_at_take,decimal_price_at_take,closing_data_available,closing_line,closing_price_american,closing_price_decimal,clv_no_vig,result,notes`
+
+Same ATD rule: `anytime_td` / `first_td` → `closing_data_available=false` forever.
+
+### Shadow logging rules
+1. Log **at decision time** when Edge issues PASS, or Erik skips PLAY/ENTERTAINMENT — never after the outcome.
+2. Capture **both-side prices** (and fair/gap when graded) on the shadow row / legs.
+3. Chief of Staff / NFL Manager owns the shadow PR (same merge layer as takes).
+4. Empty file = headers only until the first real decision is logged.
+5. Monday report section **Taken vs shadow** compares taken portfolio vs graded-but-not-taken paper P&L/CLV.
+
 ---
 
 ## Git workflow
 
-- **PRs only** for take | settle | close | report (one PR per event).  
+- **PRs only** for take | shadow | settle | close | report (one PR per event).  
 - No direct push to `main` for those events, no `--amend`, no rebase of merged history, no force push, no file deletion.  
 - Scaffold / docs PRs OK when labeled clearly.  
 - `python validate.py` must pass before merge.
@@ -230,6 +254,8 @@ python scripts/monday_report.py --season 2026 --week 2 --write   # also reports/
 ```
 
 Shared odds math lives in `lib.py` (same formulas as GRADE). **`clv_no_vig` sign:** `fair_taken_at_close − offered_implied_at_take` — **positive = beat the close** (good take); negative = worse than the close. Fair close always uses de-vig of **both** close sides; never one-sided raw implied. `anytime_td` / `first_td` stay permanently unauditable (`closing_data_available=false`).
+
+`close_lines.py --refresh` also refreshes `data/shadow_legs.csv` with the same refuse-without-final and ATD rules. Monday report includes **Taken vs shadow** (taken stake/returns vs shadow paper-$10 counts by grade, settled paper P&L, and mean CLV on auditable legs).
 
 ## Unchange
 
