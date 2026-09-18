@@ -200,6 +200,37 @@ class TestValidateVerify(unittest.TestCase):
             errors,
         )
 
+    def test_pass_reconstructed_blank_hard_fields_with_dated_verify(self):
+        rec = (
+            "RECONSTRUCTED (chat backfill 2026-09-17T21:25, not at-placement). "
+            f"VERIFY({TODAY.isoformat()}): leftovers"
+        )
+        errors, debt = _run(
+            [_base_ticket(placed_at="", notes=rec)],
+            [
+                _base_leg(
+                    game_id="",
+                    price_at_take="",
+                    american_price_at_take="",
+                    notes=rec,
+                )
+            ],
+        )
+        self.assertEqual(errors, [], errors)
+        self.assertGreaterEqual(debt, 2)
+
+    def test_fail_reconstructed_without_dated_verify_still_hard(self):
+        errors, _ = _run(
+            [
+                _base_ticket(
+                    placed_at="",
+                    notes="RECONSTRUCTED (chat backfill 2026-09-17T21:25, not at-placement)",
+                )
+            ],
+            [_base_leg()],
+        )
+        self.assertTrue(any("missing placed_at" in e for e in errors), errors)
+
     def test_fail_verify_other_field_blank_after_kickoff(self):
         # NOW is after kickoff → VERIFY cannot excuse blank book.
         past_kickoff = datetime(2026, 9, 17, 21, 0, 0, tzinfo=TZ)

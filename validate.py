@@ -67,6 +67,15 @@ def _verify_match(notes: str) -> re.Match[str] | None:
     return VERIFY_RE.search(notes or "")
 
 
+def _is_reconstructed(notes: str) -> bool:
+    return "RECONSTRUCTED" in (notes or "").upper()
+
+
+def _reconstructed_hard_ok(notes: str, has_dated: bool) -> bool:
+    """Chat backfill rows may leave hard fields blank; do not invent them."""
+    return has_dated and _is_reconstructed(notes)
+
+
 def _parse_kickoff(raw: str) -> datetime | None:
     s = (raw or "").strip()
     if not s:
@@ -180,7 +189,7 @@ def validate(
 
         for col in TICKET_HARD_REQUIRED:
             val = (t.get(col) or "").strip()
-            if not val:
+            if not val and not _reconstructed_hard_ok(notes, has_dated):
                 errors.append(f"{label} missing {col} (VERIFY never excuses)")
 
         for col in TICKET_EXCUSABLE:
@@ -237,14 +246,15 @@ def validate(
         if _has_verify_token(notes) and _verify_match(notes) and parent:
             excuse_ok = _ticket_verify_excuse_ok(parent_status, t_legs, now)
 
+        recon_ok = _reconstructed_hard_ok(notes, has_dated)
         for col in LEG_HARD_REQUIRED:
             val = (leg.get(col) or "").strip()
-            if not val:
+            if not val and not recon_ok:
                 errors.append(f"{label} missing {col} (VERIFY never excuses)")
 
         price_at = (leg.get("price_at_take") or "").strip()
         amer_at = (leg.get("american_price_at_take") or "").strip()
-        if not price_at and not amer_at:
+        if not price_at and not amer_at and not recon_ok:
             errors.append(
                 f"{label} missing price "
                 f"(need price_at_take or american_price_at_take; VERIFY never excuses)"

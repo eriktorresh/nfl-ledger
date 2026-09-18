@@ -147,12 +147,13 @@ Graded line format (malformed if incomplete):
 
 ### VERIFY notes
 - Format: `VERIFY(YYYY-MM-DD): …` (date required). Older than **7 days** (America/New_York) → validate error.  
-- **Never excused by VERIFY:** ticket `placed_at`; leg `game_id`; leg price (`price_at_take` or `american_price_at_take`). Blank = hard fail.  
+- **Never excused by VERIFY** on at-placement takes: ticket `placed_at`; leg `game_id`; leg price (`price_at_take` or `american_price_at_take`). Blank = hard fail.  
+- **RECONSTRUCTED exception:** a row marked `RECONSTRUCTED` with dated `VERIFY(YYYY-MM-DD):` may leave those three blank (do not invent). Counts as VERIFY-debt.
 - Other required blanks may be excused by VERIFY only while parent ticket `status=open` **and** kickoff has not passed (min `kickoff_at` across that ticket’s legs; if all blank, open status alone still allows the excuse). After any kickoff has passed, or `status` is `settled`|`void`|`cashout`, VERIFY excuses nothing.  
 - `validate.py` always prints a **VERIFY-debt** count (rows still carrying a dated VERIFY note).
 
 ### Reconstructions
-Chat/Slack backfills are marked `RECONSTRUCTED (…, not at-placement)` in notes. Reconstructions may be **corrected in place** until the first true at-placement take is logged for that ticket; after that, frozen-field rules apply.
+Chat/Slack backfills are marked `RECONSTRUCTED (…, not at-placement)` in notes. Reconstructions may be **corrected in place** until the first true at-placement take is logged for that ticket; after that, frozen-field rules apply. Unknown hard fields on a reconstructed row stay blank + dated VERIFY — never invent a `game_id`, price, or `placed_at` to satisfy validate.
 
 ### Frozen fields
 Never edit on an existing row: `placed_at`, `book`, `lane`, `stake_usd`, `edge_grade_at_placement`, `stake_vs_grade`, `price_at_take`, `line_at_take`, `game_id`.  
