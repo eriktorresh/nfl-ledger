@@ -1,0 +1,14 @@
+{
+  "entertainment_budget_usd": 100,
+  "script_cap_usd": 50,
+  "s5_weekly_cap_usd": 10,
+  "lane_budgets_usd": {
+    "TNF": null,
+    "S5": 10,
+    "ATD": null,
+    "SCREEN": null,
+    "SGP": null,
+    "OTHER": null
+  },
+  "notes": "Placeholders matching process: entertainment night budget example $100; script cap is half ($50). S5 lottery weekly cap $10 (set before the board). null lane = not set. These do not invent ticket field values."
+}

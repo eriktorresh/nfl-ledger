@@ -212,17 +212,28 @@ Same ATD rule: `anytime_td` / `first_td` → `closing_data_available=false` fore
 
 ## Git workflow
 
-- **PRs only** for take | shadow | settle | close | report (one PR per event).  
-- No direct push to `main` for those events, no `--amend`, no rebase of merged history, no force push, no file deletion.  
-- Scaffold / docs PRs OK when labeled clearly.  
-- `python validate.py` must pass before merge.
+See `CONTRIBUTING.md`. **PRs only.** One event type per PR: take | shadow | settle | close | report | fix | docs.  
+No direct push to `main`, no `--amend`, no rebase of merged history, no force push, no file deletion.
+
+`validate.py` lives at the **repo root**. Run it before opening a PR. CI (`.github/workflows/validate.yml`) runs `python validate.py` and `python -m unittest discover -s tests` on every pull request and every push to `main`.
 
 ```bash
 python validate.py
-python tests/test_validate.py             # or: python -m unittest discover -s tests
+python -m unittest discover -s tests
 python scripts/close_lines.py --refresh   # Tuesday after week final ONLY
 python scripts/monday_report.py           # Mondays
 ```
+
+## Budgets (`config.json`)
+
+Placeholder night / weekly caps for process (not ticket values). Adjust before the board. Do not invent `stake_usd` from these.
+
+| Field | Meaning | Placeholder |
+| --- | --- | --- |
+| `entertainment_budget_usd` | Night entertainment budget (example) | `100` |
+| `script_cap_usd` | Script ≤ half entertainment | `50` |
+| `s5_weekly_cap_usd` | S5 lottery weekly cap | `10` |
+| `lane_budgets_usd` | Per-lane weekly placeholders (`null` = not set) | S5=`10`; others `null` |
 
 ---
 
