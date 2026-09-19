@@ -144,7 +144,8 @@ Graded line format (malformed if incomplete):
 2. Required: `placed_at` (minute + UTC offset), `book`, `lane`, `stake_usd`, per-leg `price_at_take` / `line_at_take` (taken side), `edge_grade_at_placement`.  
 3. Unknown → blank + dated `VERIFY(YYYY-MM-DD):` in notes — never guess, never wait.  
 4. `edge_grade_at_placement` = what Edge issued (incl `UNGRADED`) — never upgrade to match stake.  
-5. `stake_vs_grade=override` whenever money went against the grade. A ledger that is always `agree` is managed, not kept.
+5. `stake_vs_grade=override` whenever money went against the grade. A ledger that is always `agree` is managed, not kept.  
+6. Copy money from the **slip labels**: DK “To Win” → `to_win_usd`; DK “Payout” → `payout_usd`. Do not swap them. See [Money columns](#money-columns-stake_usd-to_win_usd-payout_usd).
 
 ### VERIFY notes
 - Format: `VERIFY(YYYY-MM-DD): …` (date required). Older than **7 days** (America/New_York) → validate error.  
@@ -154,7 +155,7 @@ Graded line format (malformed if incomplete):
 - `validate.py` always prints a **VERIFY-debt** count (rows still carrying a dated VERIFY note).
 
 ### Reconstructions
-Chat/Slack backfills are marked `RECONSTRUCTED (…, not at-placement)` in notes. Reconstructions may be **corrected in place** until the first true at-placement take is logged for that ticket; after that, frozen-field rules apply. Unknown hard fields on a reconstructed row stay blank + dated VERIFY — never invent a `game_id`, price, or `placed_at` to satisfy validate.
+Chat/Slack backfills are marked `RECONSTRUCTED (…, not at-placement)` in notes. Reconstructions may be **corrected in place** until the first true at-placement take is logged for that ticket; after that, frozen-field rules apply. Unknown hard fields on a reconstructed row stay blank + dated VERIFY — never invent a `game_id`, price, or `placed_at` to satisfy validate. Never invent `to_win_usd` or `payout_usd` from chat estimates either.
 
 ### Frozen fields
 Never edit on an existing row: `placed_at`, `book`, `lane`, `stake_usd`, `edge_grade_at_placement`, `stake_vs_grade`, `price_at_take`, `line_at_take`, `game_id`.  
@@ -179,6 +180,43 @@ Do not mine nflverse for Edge angles. Hypothesis logged **before** test; must cl
 `ticket_id,placed_at,book,lane,market_family,stake_usd,to_win_usd,payout_usd,american_price,decimal_price,edge_grade_at_placement,stake_vs_grade,status,settled,returned_usd,settled_at,notes,created_at,updated_at`
 
 Enums: `book` DK|HR|OTHER · `lane` TNF|S5|ATD|SCREEN|SGP|OTHER · `market_family` SPREAD_TOTAL|SGP|ATD|PARLAY|OTHER · `edge_grade_at_placement` PLAY|ENTERTAINMENT|LOTTERY|PASS|UNGRADED|HOLD|OTHER · `stake_vs_grade` agree|override · `status` open|settled|void|cashout
+
+### Money columns (`stake_usd`, `to_win_usd`, `payout_usd`)
+
+| Column | Meaning | Match this on a DK slip |
+| --- | --- | --- |
+| `stake_usd` | Amount risked | Stake / risk |
+| `to_win_usd` | Profit if the ticket wins (**excludes** stake) | **To Win** |
+| `payout_usd` | Stake + profit if the ticket wins (**includes** stake) | **Payout** |
+
+- If both `to_win_usd` and `payout_usd` are filled, `payout_usd` ≈ `stake_usd + to_win_usd` within **$0.01**.
+- Never invent either from chat, Slack, or estimates. Unknown → blank + dated `VERIFY(YYYY-MM-DD):` and wait for Erik’s slip.
+- Arithmetic-only fill: if **one** of `to_win_usd` / `payout_usd` is filled and the other is blank, you may fill the blank from `stake_usd` plus the filled column. Do **not** guess which DK label the filled number was. If it could be either To Win or Payout, leave the other blank.
+- `monday_report.py` infers a parlay multiple from `payout_usd / stake_usd` when ticket american/decimal is missing — `payout_usd` must stay stake-inclusive.
+
+### `lane` vs `market_family` (`SGP` vs `PARLAY`)
+
+`lane` is **which process lane built the ticket**. `market_family` is **ticket structure**. Do not treat them as synonyms.
+
+| Value | Use |
+| --- | --- |
+| `market_family=SGP` | Same-game parlay: every leg shares one `game_id` (e.g. spread + total on the same game). |
+| `market_family=PARLAY` | Multi-game parlay (S5 cross-game; legs from different games). |
+| `market_family=ATD` | Anytime-TD ticket. |
+| `market_family=SPREAD_TOTAL` | Straight / correlated pair not built as an SGP. |
+| `lane=S5` | Lottery construction (SCREEN S5). **Not** the same as SGP. S5 tickets are usually `market_family=PARLAY`. |
+| `lane=SGP` | Same-game graded tickets in the SGP process lane. |
+| `lane=TNF` | Thursday / TNF process lane. Structure is still `market_family` — a TNF same-game spread+total is `SGP`, not `PARLAY`. |
+
+Going forward: do not put S5 lottery tickets in `market_family=SGP`. Do not label a same-game ticket `PARLAY`. Do **not** relabel historical rows solely for neatness — fix `RECONSTRUCTED` `market_family` only with slip evidence, noted as a RECONSTRUCTED exception.
+
+### Seed reconstructions (2026-09-17)
+
+Documented, not rewritten. No invented `placed_at`, prices, or `game_id`.
+
+1. **TNF** `4500ac74-…` — `lane=TNF`, `market_family=SGP`. Legs are BUF −5.5 + Over 54.5, both DET@BUF. **SGP is correct** (same-game spread+total). Money: `stake_usd=29.86`, `to_win_usd=70.14`, `payout_usd=100` (29.86 + 70.14 = 100.00). No CSV change.
+2. **S5** `bd4ecb98-…` — `lane=S5`, `market_family=PARLAY`. Legs ARI / IND / CIN (cross-game). **PARLAY is correct.** Recorded money already satisfies payout = stake + to_win (`9.87 + 61.13 = 71`). Notes still flag slip wording (~71–78 “to-win” vs recorded `payout_usd=71`) as VERIFY — do not rewrite without Erik’s slip.
+3. **ATD** `f0840775-…` — `to_win_usd` and `payout_usd` **left blank**. Backfill waits for Erik’s slip. Do not invent from chat ~+205.
 
 ### `data/legs.csv`
 `leg_id,ticket_id,game_id,kickoff_at,away_team,home_team,market,side,line_at_take,price_at_take,american_price_at_take,decimal_price_at_take,closing_data_available,closing_line,closing_price_american,closing_price_decimal,clv_no_vig,result,notes`

@@ -26,11 +26,28 @@ python -m unittest discover -s tests
 
 ## Never invent
 
-Do not invent `game_id`, prices (`price_at_take` / `american_price_at_take`), or `placed_at`.
+Do not invent `game_id`, prices (`price_at_take` / `american_price_at_take`), or `placed_at`. Do not invent `to_win_usd` or `payout_usd` from chat estimates.
 
 Unknown → leave blank and add a dated `VERIFY(YYYY-MM-DD):` note, or wait for Erik’s slip. Do not guess to satisfy validate.
 
 On at-placement takes, VERIFY never excuses: ticket `placed_at`, leg `game_id`, and at least one of `price_at_take` or `american_price_at_take`. Blank = hard fail.
+
+## Money columns (`to_win_usd` vs `payout_usd`)
+
+Full table in README. Short form:
+
+- `stake_usd` = amount risked.
+- `to_win_usd` = profit if the ticket wins (**excludes** stake). Prefer when matching a DK slip **To Win**.
+- `payout_usd` = stake + profit if the ticket wins (**includes** stake). Prefer when matching a DK slip **Payout**.
+- If both filled: `payout_usd` ≈ `stake_usd + to_win_usd` within $0.01.
+- Fill a blank money column only by arithmetic from the filled column + `stake_usd`. If it is ambiguous which DK label the filled number is, leave the other blank + dated VERIFY.
+
+## `SGP` vs `PARLAY`
+
+- `market_family=SGP`: same-game parlay (legs share one `game_id`).
+- `market_family=PARLAY`: multi-game parlay (S5 cross-game).
+- `lane=S5` = lottery construction; do not confuse with SGP. `lane=SGP` is for same-game graded tickets.
+- Do not relabel historical rows solely for neatness. Fix `RECONSTRUCTED` `market_family` only with slip evidence.
 
 ## Frozen fields
 
