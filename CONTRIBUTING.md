@@ -30,7 +30,7 @@ Do not invent `game_id`, prices (`price_at_take` / `american_price_at_take`), or
 
 Unknown → leave blank and add a dated `VERIFY(YYYY-MM-DD):` note, or wait for Erik’s slip. Do not guess to satisfy validate.
 
-On at-placement takes, VERIFY never excuses: ticket `placed_at`, leg `game_id`, and at least one of `price_at_take` or `american_price_at_take`. Blank = hard fail.
+On at-placement takes, VERIFY never excuses: ticket `placed_at`, leg `game_id`, and at least one of `price_at_take` or `american_price_at_take` on spread/total/ML legs. Blank = hard fail. `anytime_td` / `first_td` may leave leg price blank with dated `VERIFY(YYYY-MM-DD):` (Trade/SGP slips do not show prop juice; do not invent). That allowance is not limited to pre-kickoff.
 
 ## Money columns (`to_win_usd` vs `payout_usd`)
 

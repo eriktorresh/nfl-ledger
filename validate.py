@@ -57,6 +57,7 @@ TICKET_EXCUSABLE = [c for c in TICKET_REQUIRED if c not in TICKET_HARD_REQUIRED]
 
 # Hard required on legs — VERIFY never excuses these.
 # price: at least one of price_at_take OR american_price_at_take (checked separately).
+# anytime_td/first_td may omit both when a dated VERIFY is present (see _leg_price_excused).
 LEG_HARD_REQUIRED = ["game_id"]
 LEG_REQUIRED = [
     "leg_id",
@@ -113,6 +114,21 @@ def _is_reconstructed(notes: str) -> bool:
 def _reconstructed_hard_ok(notes: str, has_dated: bool) -> bool:
     """Chat backfill rows may leave hard fields blank; do not invent them."""
     return has_dated and _is_reconstructed(notes)
+
+
+def _leg_price_excused(leg: dict[str, str], notes: str, has_dated: bool) -> bool:
+    """Blank leg price is allowed for RECONSTRUCTED rows, and for anytime_td/first_td
+    with a dated VERIFY.
+
+    Trade/SGP slips do not show prop juice. Do not invent a price to satisfy
+    validate. The allowance is not kickoff-limited: those markets stay
+    closing_data_available=false forever, and the blank must remain valid
+    after kickoff. Spreads/totals/MLs are not excused.
+    """
+    if _reconstructed_hard_ok(notes, has_dated):
+        return True
+    mkt = (leg.get("market") or "").strip()
+    return mkt in {"anytime_td", "first_td"} and has_dated
 
 
 def _parse_kickoff(raw: str) -> datetime | None:
@@ -334,7 +350,7 @@ def validate(
 
         price_at = (leg.get("price_at_take") or "").strip()
         amer_at = (leg.get("american_price_at_take") or "").strip()
-        if not price_at and not amer_at and not recon_ok:
+        if not price_at and not amer_at and not _leg_price_excused(leg, notes, has_dated):
             errors.append(
                 f"{label} missing price "
                 f"(need price_at_take or american_price_at_take; VERIFY never excuses)"
@@ -481,7 +497,7 @@ def _validate_shadow(
 
         price_at = (leg.get("price_at_take") or "").strip()
         amer_at = (leg.get("american_price_at_take") or "").strip()
-        if not price_at and not amer_at and not recon_ok:
+        if not price_at and not amer_at and not _leg_price_excused(leg, notes, has_dated):
             errors.append(
                 f"{label} missing price "
                 f"(need price_at_take or american_price_at_take; VERIFY never excuses)"

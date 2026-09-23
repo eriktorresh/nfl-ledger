@@ -200,6 +200,43 @@ class TestValidateVerify(unittest.TestCase):
             errors,
         )
 
+    def test_pass_atd_blank_price_with_dated_verify_after_kickoff(self):
+        after = datetime(2026, 9, 17, 21, 0, 0, tzinfo=TZ)
+        errors, debt = _run(
+            [_base_ticket()],
+            [
+                _base_leg(
+                    market="anytime_td",
+                    side="Nabers",
+                    line_at_take="",
+                    price_at_take="",
+                    american_price_at_take="",
+                    closing_data_available="false",
+                    notes=f"VERIFY({TODAY.isoformat()}): price not on slip; do not invent",
+                )
+            ],
+            now=after,
+        )
+        self.assertEqual(errors, [], errors)
+        self.assertGreaterEqual(debt, 1)
+
+    def test_fail_atd_blank_price_without_verify(self):
+        errors, _ = _run(
+            [_base_ticket()],
+            [
+                _base_leg(
+                    market="anytime_td",
+                    side="Nabers",
+                    line_at_take="",
+                    price_at_take="",
+                    american_price_at_take="",
+                    closing_data_available="false",
+                    notes="",
+                )
+            ],
+        )
+        self.assertTrue(any("missing price" in e for e in errors), errors)
+
     def test_pass_reconstructed_blank_hard_fields_with_dated_verify(self):
         rec = (
             "RECONSTRUCTED (chat backfill 2026-09-17T21:25, not at-placement). "

@@ -149,7 +149,7 @@ Graded line format (malformed if incomplete):
 
 ### VERIFY notes
 - Format: `VERIFY(YYYY-MM-DD): …` (date required). Older than **7 days** (America/New_York) → validate error.  
-- **Never excused by VERIFY** on at-placement takes: ticket `placed_at`; leg `game_id`; leg price (`price_at_take` or `american_price_at_take`). Blank = hard fail.  
+- **Never excused by VERIFY** on at-placement takes: ticket `placed_at`; leg `game_id`; leg price (`price_at_take` or `american_price_at_take`) on spread/total/ML. Blank = hard fail. `anytime_td` / `first_td` may leave price blank with dated `VERIFY(YYYY-MM-DD):` — do not invent prop juice the slip does not show. That allowance stays valid after kickoff (`closing_data_available=false` forever).  
 - **RECONSTRUCTED exception:** a row marked `RECONSTRUCTED` with dated `VERIFY(YYYY-MM-DD):` may leave those three blank (do not invent). Counts as VERIFY-debt.
 - Other required blanks may be excused by VERIFY only while parent ticket `status=open` **and** kickoff has not passed (min `kickoff_at` across that ticket’s legs; if all blank, open status alone still allows the excuse). After any kickoff has passed, or `status` is `settled`|`void`|`cashout`, VERIFY excuses nothing.  
 - `validate.py` always prints a **VERIFY-debt** count (rows still carrying a dated VERIFY note).
